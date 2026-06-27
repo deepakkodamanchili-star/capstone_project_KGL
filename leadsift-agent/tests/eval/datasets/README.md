@@ -1,48 +1,102 @@
-# Evaluation datasets
+# Evaluation Datasets
 
-This directory holds sample evaluation data for LeadSift Agent. The datasets are intended for validating the workflow on realistic lead prompts, security cases, and generic out-of-domain questions.
+This directory contains evaluation datasets for testing agent behavior.
 
-## Quick start
+## Running Evaluations
 
-Run the evaluation commands from the project root:
-
+### Default Dataset
 ```bash
-uv run agents-cli eval generate --dataset tests/eval/datasets/basic-dataset.json
-uv run agents-cli eval grade --metrics general_quality --traces ./traces
+# Generate traces using the default dataset
+agents-cli eval generate
+agents-cli eval grade
 ```
 
-## Dataset contents
+### Custom Dataset
+```bash
+# Generate traces for a custom dataset
+agents-cli eval generate --dataset tests/eval/datasets/custom-dataset.json --output custom_traces/
+agents-cli eval grade --metrics general_quality --traces custom_traces/
+```
 
-- basic-dataset.json: starter examples for lead research and qualification scenarios
-- Additional datasets can be added for security, routing, or edge-case behavior
+## Dataset Format
 
-## Dataset format
+Each dataset file follows the Gemini Enterprise Agent Platform Evaluation
+dataset format. An eval case may use **either** of two shapes — both are
+valid input to `agents-cli eval generate`:
 
-Each evaluation file uses the standard Agents CLI eval format. A case can be either:
-
-- a single prompt case, or
-- a conversation continuation case with prior turns
-
-Example structure:
+**Shape A — single-prompt case:**
 
 ```json
 {
   "eval_cases": [
     {
-      "eval_case_id": "lead_research_case",
+      "eval_case_id": "unique_case_id",
       "prompt": {
         "role": "user",
-        "parts": [{"text": "Jane Doe at Google is the VP of Product Operations."}]
+        "parts": [{"text": "User message"}]
       }
     }
   ]
 }
 ```
 
-## Suggested use cases
+**Shape B — continued-conversation case (the "N+1" pattern):**
+The case carries prior turns in `agent_data` and the last turn ends with a
+user message; `eval generate` appends the next agent response.
 
-- Validate that business leads are researched and scored correctly.
-- Confirm that prompt injection attempts are blocked.
-- Verify that generic greetings or unrelated questions receive the expected fallback response.
+```json
+{
+  "eval_cases": [
+    {
+      "eval_case_id": "unique_case_id",
+      "agent_data": {
+        "turns": [
+          {
+            "turn_index": 0,
+            "events": [
+              {"author": "user",  "content": {"role": "user",  "parts": [{"text": "First user message"}]}},
+              {"author": "agent", "content": {"role": "model", "parts": [{"text": "First agent reply"}]}},
+              {"author": "user",  "content": {"role": "user",  "parts": [{"text": "Follow-up user message"}]}}
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
+```
 
-For more details on the evaluation surface, see the Agents CLI documentation.
+## Key Fields
+
+- `eval_cases`: Array of evaluation cases.
+- `eval_case_id`: Unique identifier for the evaluation case (optional).
+- `prompt`: A single user message — Shape A.
+- `agent_data.turns`: Prior conversation turns ending with a user message — Shape B.
+
+## Creating Custom Datasets
+
+You can create custom datasets in two ways:
+
+1. **By Hand**: Copy `basic-dataset.json` as a template and manually add evaluation cases.
+2. **Synthesize**: Use the synthetic dataset generation command to generate conversation scenarios:
+   ```bash
+   agents-cli eval dataset synthesize --count 10
+   ```
+
+## Discovering Metrics
+
+You can discover available out-of-the-box evaluation metrics by running:
+
+```bash
+agents-cli eval metric list
+```
+
+## Beyond Generate and Grade
+
+Once you have a baseline, the eval surface has a few more commands worth knowing about:
+
+- `agents-cli eval compare BASE CAND` — diff two grade-results files (regression check).
+- `agents-cli eval analyze RESULTS` — cluster failure modes from a grade-results file.
+- `agents-cli eval optimize` — auto-tune your agent's prompts using eval data.
+
+See the [Evaluation Guide](https://google.github.io/agents-cli/guide/evaluation/) for the full surface and metric reference.
