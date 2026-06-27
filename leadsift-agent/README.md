@@ -173,7 +173,7 @@ The presentation script for this project can be found in [DEMO_SCRIPT.txt](DEMO_
    git add .
    git commit -m "Initial commit: leadsift-agent ADK agent"
    git branch -M main
-   git remote add origin https://github.com/deepakkodamanchili-star/leadsift-agent.git
+   git remote add origin https://github.com/<your-username>/leadsift-agent.git
    git push -u origin main
    ```
 
