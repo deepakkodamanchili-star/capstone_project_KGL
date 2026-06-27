@@ -1,4 +1,4 @@
-[0:00 — HOOK]
+[1:00 — HOOK]
 Hello everyone. Today, I'm excited to show you LeadSift Agent, a secure, intelligent, multi-agent assistant built on the Google ADK 2.0 framework that automates inbound lead research, qualification, and CRM enrichment in seconds.
 
 [0:20 — WHAT IT IS]

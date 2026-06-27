@@ -57,6 +57,11 @@ Return the structured output matching the ResearchOutput schema.
     output_schema=ResearchOutput,
     description="Researches a lead and company to find size, industry, and profile details.",
     tools=[mcp_toolset],
+    generate_content_config=types.GenerateContentConfig(
+        http_options=types.HttpOptions(
+            retry_options=types.HttpRetryOptions(initial_delay=1, attempts=2),
+        ),
+    ),
 )
 
 scoring_agent = LlmAgent(
@@ -73,6 +78,11 @@ Return the structured output matching the ScoreOutput schema.
 """,
     output_schema=ScoreOutput,
     description="Scores a lead based on company size, industry, and role details.",
+    generate_content_config=types.GenerateContentConfig(
+        http_options=types.HttpOptions(
+            retry_options=types.HttpRetryOptions(initial_delay=1, attempts=2),
+        ),
+    ),
 )
 
 # Orchestrator agent
@@ -90,6 +100,11 @@ Ensure you call the tools to delegate the work.
     output_schema=OrchestratorOutput,
     description="Orchestrates lead research and scoring by delegating to specialized agents.",
     tools=[AgentTool(research_agent), AgentTool(scoring_agent), mcp_toolset],
+    generate_content_config=types.GenerateContentConfig(
+        http_options=types.HttpOptions(
+            retry_options=types.HttpRetryOptions(initial_delay=1, attempts=2),
+        ),
+    ),
 )
 
 # Workflow Function Nodes
@@ -161,6 +176,29 @@ def security_checkpoint(ctx: Context, node_input: types.Content) -> Event:
             
         print(json.dumps(audit_log))
         return Event(output=state_delta, route="security_violation", state=state_delta)
+
+    # 4. Out-of-Domain & Greeting Detection
+    lower_input = input_text.lower().strip()
+    business_indicators = ["lead", "company", "work", "role", "position", "employee", "email", "phone", "vp", "director", "manager", "analyst", "engineer", "hire", "jane", "bob", "smith", "doe"]
+    has_business_context = any(indicator in lower_input for indicator in business_indicators)
+    
+    greetings = ["hello", "hi", "hlo", "hey", "greetings", "good morning", "good afternoon", "good evening", "yo", "sup"]
+    is_greeting = lower_input in greetings or any(lower_input.startswith(g + " ") for g in greetings)
+    
+    question_starters = ["why is", "how do", "what is", "can you", "who is", "tell me about", "where is", "explain"]
+    is_question = any(q in lower_input for q in question_starters)
+    
+    is_out_of_domain = False
+    if not has_business_context:
+        if is_greeting or is_question or len(lower_input.split()) < 4 or len(lower_input) < 15:
+            is_out_of_domain = True
+            state_delta["security_verdict"] = "Out of domain generic query"
+        
+    if is_out_of_domain:
+        audit_log["severity"] = "INFO"
+        audit_log["event"] = "out_of_domain_block"
+        print(json.dumps(audit_log))
+        return Event(output=state_delta, route="out_of_domain", state=state_delta)
         
     print(json.dumps(audit_log))
     # Route to LeadOrchestrator by passing clean text as output
@@ -265,6 +303,13 @@ async def security_event_handler(ctx: Context, node_input: Any):
     yield Event(content=types.Content(role='model', parts=[types.Part.from_text(text=result_msg)]))
     yield Event(output=result_msg)
 
+async def out_of_domain_handler(ctx: Context, node_input: Any):
+    """Handle out-of-domain/generic questions gracefully."""
+    result_msg = "I am the LeadSift Agent, designed to score and enrich business leads. Please submit lead details (e.g., 'Jane Doe at Google is a VP') to get started!"
+    
+    yield Event(content=types.Content(role='model', parts=[types.Part.from_text(text=result_msg)]))
+    yield Event(output=result_msg)
+
 # Build the Workflow Graph
 root_agent = Workflow(
     name="LeadSiftWorkflow",
@@ -273,8 +318,11 @@ root_agent = Workflow(
         ('START', security_checkpoint),
         # Route to Orchestrator if clean
         (security_checkpoint, orchestrator_agent),
-        # Route to security event if violation
-        (security_checkpoint, {"security_violation": security_event_handler}),
+        # Route to security event/out of domain if violation/generic
+        (security_checkpoint, {
+            "security_violation": security_event_handler,
+            "out_of_domain": out_of_domain_handler
+        }),
         # Orchestrator outputs results to evaluate_score
         (orchestrator_agent, evaluate_score),
         # Routing scoring decisions
